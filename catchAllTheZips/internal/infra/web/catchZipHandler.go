@@ -3,13 +3,15 @@ package web
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 
 	dtos "github.com/GoExpertCurso/catchAllTheZips/internal/entity/DTOs"
-	identifyZipCode "github.com/GoExpertCurso/catchAllTheZips/pkg/identifyZipCode"
+	"github.com/GoExpertCurso/catchAllTheZips/pkg"
 )
 
-func catchZipHandler(w http.ResponseWriter, r *http.Request) {
+func CatchZipHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("catching the zip.....")
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Error reading request body", http.StatusInternalServerError)
@@ -23,10 +25,11 @@ func catchZipHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if identifyZipCode.IdentifyZipCode(cepDTO.Cep) {
+	if pkg.IdentifyZipCode(cepDTO.Cep) {
+		log.Println("zip caught successfully")
 		w.Write([]byte("Valid zip code"))
 	} else {
+		log.Println("Oh no, zip code escaped!")
 		http.Error(w, "invalid zipcode", http.StatusUnprocessableEntity)
 	}
-
 }

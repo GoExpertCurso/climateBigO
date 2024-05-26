@@ -3,15 +3,15 @@ package main
 import (
 	"log"
 	"net/http"
+
+	"github.com/GoExpertCurso/catchAllTheZips/internal/infra/web"
+	"github.com/gorilla/mux"
 )
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello, World!"))
-	})
+	r := mux.NewRouter()
+	r.HandleFunc("/", web.CatchZipHandler)
 
-	http.ListenAndServe(":8080", mux)
 	log.Println("Server started on :8080")
-
+	http.ListenAndServe(":8080", r)
 }
