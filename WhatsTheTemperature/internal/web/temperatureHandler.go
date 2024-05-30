@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,9 +14,15 @@ import (
 	dto "github.com/GoExpertCurso/whatsTheTemperature/internal/web/entity/DTOs"
 	"github.com/GoExpertCurso/whatsTheTemperature/pkg"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel"
 )
 
+var tracer = otel.Tracer("github.com/GoExpertCurso/whatsTheTemperature")
+
 func SearchZipCode(w http.ResponseWriter, r *http.Request) {
+	ctx, span := tracer.Start(r.Context(), "SearchZipCode")
+	defer span.End()
+
 	vars := mux.Vars(r)
 	cep, ok := vars["cep"]
 	if !ok {
@@ -55,10 +62,13 @@ func SearchZipCode(w http.ResponseWriter, r *http.Request) {
 	var cepDto dto.Cep
 	_ = json.Unmarshal(body, &cepDto)
 	defer response.Body.Close()
-	SearchClimate(w, r, cepDto.Localidade)
+	SearchClimate(ctx, w, r, cepDto.Localidade)
 }
 
-func SearchClimate(w http.ResponseWriter, r *http.Request, location string) {
+func SearchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, location string) {
+	_, span := tracer.Start(ctx, "SearchClimate")
+	defer span.End()
+
 	configs, err := configs.LoadConfig(".")
 	if err != nil {
 		panic(err)
