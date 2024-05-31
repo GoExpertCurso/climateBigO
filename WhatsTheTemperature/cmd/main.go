@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/GoExpertCurso/whatsTheTemperature/configs"
 	"github.com/GoExpertCurso/whatsTheTemperature/internal/web"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -39,11 +38,6 @@ func main() {
 		}
 	}()
 
-	configs, err := configs.LoadConfig(".")
-	if err != nil {
-		panic(err)
-	}
-
 	r := mux.NewRouter()
 	r.Use(otelmux.Middleware("server"))
 
@@ -51,8 +45,9 @@ func main() {
 
 	handler := otelhttp.NewHandler(r, "http.server")
 
+	PORT_HOST := os.Getenv("PORT")
 	srv := &http.Server{
-		Addr:    ":" + configs.WEB_SERVER_PORT,
+		Addr:    ":" + PORT_HOST,
 		Handler: handler,
 	}
 
@@ -60,9 +55,9 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Println("Server running on port", configs.WEB_SERVER_PORT)
+		log.Println("Server running on port", PORT_HOST)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Could not listen on %s: %v\n", configs.WEB_SERVER_PORT, err)
+			log.Fatalf("Could not listen on %s: %v\n", PORT_HOST, err)
 		}
 	}()
 

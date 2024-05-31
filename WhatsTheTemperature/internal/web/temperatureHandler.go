@@ -8,9 +8,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 
-	"github.com/GoExpertCurso/whatsTheTemperature/configs"
 	dto "github.com/GoExpertCurso/whatsTheTemperature/internal/web/entity/DTOs"
 	"github.com/GoExpertCurso/whatsTheTemperature/pkg"
 	"github.com/gorilla/mux"
@@ -69,18 +69,13 @@ func SearchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, 
 	_, span := tracer.Start(ctx, "SearchClimate")
 	defer span.End()
 
-	configs, err := configs.LoadConfig(".")
-	if err != nil {
-		panic(err)
-	}
-
 	params := url.Values{}
 	params.Add("q", location)
 	params.Add("aqi", "no")
 
 	encodedParams := params.Encode()
 
-	baseUrl := "https://api.weatherapi.com/v1/current.json?key=" + configs.APIKEY
+	baseUrl := "https://api.weatherapi.com/v1/current.json?key=" + os.Getenv("API_KEY")
 	requestUrl := baseUrl + "&" + encodedParams
 
 	response, err := http.Get(requestUrl)
