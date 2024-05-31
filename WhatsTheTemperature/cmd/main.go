@@ -12,10 +12,13 @@ import (
 	"github.com/GoExpertCurso/whatsTheTemperature/configs"
 	"github.com/GoExpertCurso/whatsTheTemperature/internal/web"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/exporters/zipkin"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.23.1"
@@ -26,6 +29,13 @@ func main() {
 	defer func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
 			log.Fatalf("failed to shutdown TracerProvider %v", err)
+		}
+	}()
+
+	mp := initMetrics()
+	defer func() {
+		if err := mp.Shutdown(context.Background()); err != nil {
+			log.Fatalf("Error stopping metric controller: %v", err)
 		}
 	}()
 
@@ -54,6 +64,12 @@ func main() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Could not listen on %s: %v\n", configs.WEB_SERVER_PORT, err)
 		}
+	}()
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		log.Println("Prometheus metrics exposed on /metrics")
+		log.Fatal(http.ListenAndServe(":2112", nil))
 	}()
 
 	<-stop
@@ -85,4 +101,17 @@ func initTracer() *trace.TracerProvider {
 	)
 	otel.SetTracerProvider(tp)
 	return tp
+}
+
+func initMetrics() *metric.MeterProvider {
+	exporter, err := prometheus.New()
+	if err != nil {
+		log.Fatalf("failed to initialize prometeus exporter %v", err)
+	}
+
+	mp := metric.NewMeterProvider(
+		metric.WithReader(exporter),
+	)
+	otel.SetMeterProvider(mp)
+	return mp
 }
