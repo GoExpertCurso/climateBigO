@@ -102,6 +102,7 @@ func SearchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, 
 	_ = json.Unmarshal(weatherResponse, &weatherDto)
 	defer response.Body.Close()
 	var temps dto.TempResponseDTO
+	temps.City = weatherDto.Location.Name
 	temps.Temp_f = pkg.CalcFarenheit(weatherDto.Current.TempC)
 	temps.Temp_k = pkg.CalcKelvin(weatherDto.Current.TempC)
 	temps.Temp_c = weatherDto.Current.TempC
