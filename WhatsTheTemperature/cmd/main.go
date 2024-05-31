@@ -72,7 +72,7 @@ func main() {
 }
 
 func initTracer() *trace.TracerProvider {
-	exporter, err := zipkin.New("http://localhost:9411/api/v2/spans")
+	exporter, err := zipkin.New("http://zipkin:9411/api/v2/spans")
 	if err != nil {
 		log.Fatalf("failed to initialize Zipkin exporter %v", err)
 	}

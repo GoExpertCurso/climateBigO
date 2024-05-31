@@ -1,0 +1,38 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  zipkin:
+    endpoint: "http://zipkin:9411/api/v2/spans"
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: "collector"
+
+processors:
+  batch:
+  memory_limiter:
+    # Setting required parameters for memory_limiter
+    check_interval: 1s
+    limit_mib: 4000
+    spike_limit_mib: 500
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+  pprof:
+    endpoint: "0.0.0.0:8890"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, memory_limiter]
+      exporters: [zipkin]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, memory_limiter]
+      exporters: [prometheus]
+  extensions: [health_check, pprof]

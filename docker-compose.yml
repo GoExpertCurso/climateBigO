@@ -1,0 +1,81 @@
+version: '3.8'
+
+networks:
+  net:
+    driver: bridge
+
+services:
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - net
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./.docker/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - net
+
+  collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./.docker/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"  # gRPC
+      - "55681:55681"  # OpenTelemetry
+      - "8890:8890"  # pprof extension
+      - "13133:13133"  # health_check extension
+      - "14250:14250"  # Zipkin
+      - "8889:8889"  # Prometheus metrics
+    networks:
+      - net
+
+  app1:
+    container_name: app_catch
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder-1
+    command: ["./catz"]
+    # "./catchAllTheZips/cmd/catz"
+    ports:
+      - "8080:8080"
+      #- "8787:8787"
+      #- "2112:2112"
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+    depends_on:
+      - zipkin
+      - prometheus
+      - collector
+    networks:
+      - net
+
+  app2:
+    container_name: app_watch
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder-2
+    command: ["./wtt"]
+    ports:
+      - "8787:8787"
+      - "2112:2112"
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+    depends_on:
+      - zipkin
+      - prometheus
+      - collector
+      - app1
+    networks:
+      - net

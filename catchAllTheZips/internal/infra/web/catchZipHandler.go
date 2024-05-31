@@ -42,7 +42,7 @@ func CatchZipHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func callTemperatureAPI(cep string) []byte {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost:9292/"+cep, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://app_watch:8787/"+cep, nil)
 	if err != nil {
 		log.Printf("Error creating request: %v", err)
 	}
