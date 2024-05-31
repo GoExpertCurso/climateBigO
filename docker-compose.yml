@@ -40,7 +40,7 @@ services:
       - net
 
   app1:
-    container_name: app_catch
+    container_name: catchAllTheZips
     build:
       context: .
       dockerfile: Dockerfile
@@ -53,6 +53,10 @@ services:
       #- "2112:2112"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+      - HOST=catchAllTheZips
+      - PORT=8080
+      - HOST_WTT=whatsTheTemperature
+      - PORT_WTT=8787
     depends_on:
       - zipkin
       - prometheus
@@ -61,7 +65,7 @@ services:
       - net
 
   app2:
-    container_name: app_watch
+    container_name: whatsTheTemperature
     build:
       context: .
       dockerfile: Dockerfile
@@ -72,6 +76,9 @@ services:
       - "2112:2112"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
+      - API_KEY=
+      - HOST=whatsTheTemperature
+      - PORT=8787
     depends_on:
       - zipkin
       - prometheus

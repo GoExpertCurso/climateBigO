@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
 	dtos "github.com/GoExpertCurso/catchAllTheZips/internal/entity/DTOs"
 	"github.com/GoExpertCurso/catchAllTheZips/pkg"
@@ -42,7 +43,9 @@ func CatchZipHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func callTemperatureAPI(cep string) []byte {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://app_watch:8787/"+cep, nil)
+	host_wtt := os.Getenv("HOST_WTT")
+	port_wtt := os.Getenv("PORT_WTT")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+host_wtt+":"+port_wtt+"/"+cep, nil)
 	if err != nil {
 		log.Printf("Error creating request: %v", err)
 	}

@@ -46,19 +46,19 @@ func main() {
 
 	handler := otelhttp.NewHandler(r, "http.server")
 
+	PORT_HOST := os.Getenv("PORT")
 	srv := &http.Server{
-		Addr:    ":" + "8080",
+		Addr:    ":" + PORT_HOST,
 		Handler: handler,
 	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	log.Println("Server started on :8080")
 	go func() {
-		log.Println("Server running on port", "8080")
+		log.Println("Server running on port", PORT_HOST)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Could not listen on %s: %v\n", "8080", err)
+			log.Fatalf("Could not listen on %s: %v\n", PORT_HOST, err)
 		}
 	}()
 
