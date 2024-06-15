@@ -16,6 +16,7 @@ services:
   prometheus:
     image: prom/prometheus
     container_name: prometheus
+    restart: always
     volumes:
       - ./.docker/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
@@ -26,6 +27,7 @@ services:
   collector:
     image: otel/opentelemetry-collector:latest
     container_name: otel-collector
+    restart: always
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./.docker/otel-collector-config.yaml:/etc/otel-collector-config.yaml
@@ -36,8 +38,18 @@ services:
       - "13133:13133"  # health_check extension
       - "14250:14250"  # Zipkin
       - "8889:8889"  # Prometheus metrics
+      - "8888:8888"   # Prometheus metrics exposed by the collector
     networks:
       - net
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    restart: always
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
 
   app1:
     container_name: catchAllTheZips
@@ -73,10 +85,10 @@ services:
     command: ["./wtt"]
     ports:
       - "8787:8787"
-      - "2112:2112"
+      #- "2112:2112"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
-      - API_KEY=
+      - API_KEY=6e2adbbe3c774cf6aa122105242504
       - HOST=whatsTheTemperature
       - PORT=8787
     depends_on:

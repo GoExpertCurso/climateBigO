@@ -5,11 +5,16 @@ receivers:
       http:
 
 exporters:
-  zipkin:
-    endpoint: "http://zipkin:9411/api/v2/spans"
+  otlp:
+    endpoint: localhost:4317
+    tls:
+      insecure: true
+  
   prometheus:
     endpoint: "0.0.0.0:8889"
-    namespace: "collector"
+    #namespace: "collector"
+  
+  logging:
 
 processors:
   batch:
@@ -29,10 +34,10 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, memory_limiter]
-      exporters: [zipkin]
+      processors: [batch]
+      exporters: [logging, otlp]
     metrics:
       receivers: [otlp]
-      processors: [batch, memory_limiter]
-      exporters: [prometheus]
+      processors: [batch]
+      exporters: [logging, prometheus]
   extensions: [health_check, pprof]
