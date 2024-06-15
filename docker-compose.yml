@@ -50,6 +50,8 @@ services:
       - "3001:3000"
     depends_on:
       - prometheus
+    #networks:
+    #  - net
 
   app1:
     container_name: catchAllTheZips
@@ -88,7 +90,7 @@ services:
       #- "2112:2112"
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
-      - API_KEY=6e2adbbe3c774cf6aa122105242504
+      - API_KEY=
       - HOST=whatsTheTemperature
       - PORT=8787
     depends_on:

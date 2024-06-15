@@ -7,19 +7,25 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	dtos "github.com/GoExpertCurso/catchAllTheZips/internal/entity/DTOs"
 	"github.com/GoExpertCurso/catchAllTheZips/pkg"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
-var tracer = otel.Tracer("github.com/GoExpertCurso/catchAllTheZips")
+type WebHandler struct {
+	Tracer trace.Tracer
+}
 
-func CatchZipHandler(w http.ResponseWriter, r *http.Request) {
-	_, span := tracer.Start(r.Context(), "SearchZipCode")
-	defer span.End()
+func NewWebHandler(tracer trace.Tracer) *WebHandler {
+	return &WebHandler{
+		Tracer: tracer,
+	}
+}
 
-	log.Println("catching the zip.....")
+func (h *WebHandler) CatchZipHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Error reading request body", http.StatusInternalServerError)
@@ -34,23 +40,28 @@ func CatchZipHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pkg.IdentifyZipCode(cepDTO.Cep) {
-		log.Println("zip caught successfully")
 		w.Write([]byte(callTemperatureAPI(cepDTO.Cep)))
 	} else {
-		log.Println("Oh no, zip code escaped!")
 		http.Error(w, "invalid zipcode", http.StatusUnprocessableEntity)
 	}
 }
 
 func callTemperatureAPI(cep string) []byte {
-	host_wtt := os.Getenv("HOST_WTT")
-	port_wtt := os.Getenv("PORT_WTT")
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+host_wtt+":"+port_wtt+"/"+cep, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+os.Getenv("HOST_WTT")+":"+os.Getenv("PORT_WTT")+"/"+cep, nil)
 	if err != nil {
 		log.Printf("Error creating request: %v", err)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport,
+			otelhttp.WithSpanNameFormatter(func(_ string, req *http.Request) string {
+				return "get-cep-temp"
+			}),
+		),
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		log.Printf("Error making request: %v", err)

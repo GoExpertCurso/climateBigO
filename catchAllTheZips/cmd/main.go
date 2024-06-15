@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,48 +13,43 @@ import (
 	"github.com/GoExpertCurso/catchAllTheZips/internal/infra/web"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/exporters/prometheus"
-	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.15.0"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-	tp := initTracer()
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			log.Fatalf("failed to shutdown TracerProvider %v", err)
-		}
-	}()
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
 
-	mp := initMetrics()
-	defer func() {
-		if err := mp.Shutdown(context.Background()); err != nil {
-			log.Fatalf("Error stopping metric controller: %v", err)
-		}
-	}()
-
+	handler := InitConfig()
 	r := mux.NewRouter()
-	r.Use(otelmux.Middleware("server"))
+	r.HandleFunc("/", handler.CatchZipHandler)
+	r.Handle("/metrics", promhttp.Handler())
+	//r.Use(otelmux.Middleware("server"))
 
-	r.HandleFunc("/", web.CatchZipHandler)
-
-	handler := otelhttp.NewHandler(r, "http.server")
+	shutdown, err := initProvider("catchAllTheZips", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	if err != nil {
+		log.Fatalf("failed to initialize provider: %v", err)
+	}
+	defer func() {
+		if err := shutdown(ctx); err != nil {
+			log.Fatalf("failed to shutdown provider: %v", err)
+		}
+	}()
 
 	PORT_HOST := os.Getenv("PORT")
 	srv := &http.Server{
 		Addr:    ":" + PORT_HOST,
-		Handler: handler,
+		Handler: r,
 	}
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		log.Println("Server running on port", PORT_HOST)
@@ -62,76 +58,56 @@ func main() {
 		}
 	}()
 
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		log.Println("Prometheus metrics exposed on /metrics")
-		log.Fatal(http.ListenAndServe(":2112", nil))
-	}()
-
 	<-stop
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+}
+
+func InitConfig() *web.WebHandler {
+	tracer := otel.Tracer("catchAllTheZips-tracer")
+
+	handler := web.NewWebHandler(tracer)
+	return handler
+}
+
+func initProvider(serviceName, collectorURL string) (func(context.Context) error, error) {
+	ctx := context.Background()
+
+	res, err := resource.New(
+		ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(serviceName),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
-
-	log.Println("Server exiting")
-}
-
-/* func initTracer() *trace.TracerProvider {
-	exporter, err := zipkin.New("http://localhost:9411/api/v2/spans")
+	conn, err := grpc.DialContext(
+		ctx,
+		collectorURL,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
 	if err != nil {
-		log.Fatalf("failed to initialize Zipkin exporter %v", err)
+		return nil, fmt.Errorf("failed to create gRPC connection to collector: %w", err)
 	}
 
-	tp := trace.NewTracerProvider(
-		trace.WithBatcher(exporter),
-		trace.WithResource(resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("catchAllTheZips"),
-		)),
-	)
-	otel.SetTracerProvider(tp)
-	return tp
-} */
-
-func initMetrics() *metric.MeterProvider {
-	exporter, err := prometheus.New()
+	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
 	if err != nil {
-		log.Fatalf("failed to initialize prometeus exporter %v", err)
+		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}
 
-	mp := metric.NewMeterProvider(
-		metric.WithReader(exporter),
+	bsp := sdktrace.NewBatchSpanProcessor(traceExporter)
+	tracerProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithResource(res),
+		sdktrace.WithSpanProcessor(bsp),
 	)
-	otel.SetMeterProvider(mp)
-	return mp
-}
+	otel.SetTracerProvider(tracerProvider)
 
-func initTracer() *trace.TracerProvider {
-	// Set up the OTLP exporter
-	endpoint := "collector:4317"
-	if envEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); envEndpoint != "" {
-		endpoint = envEndpoint
-	}
-	client := otlptracegrpc.NewClient(
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint(endpoint),
-	)
-	exporter, err := otlptrace.New(context.Background(), client)
-	if err != nil {
-		log.Fatalf("failed to initialize OTLP exporter: %v", err)
-	}
+	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	tp := trace.NewTracerProvider(
-		trace.WithBatcher(exporter),
-		trace.WithResource(resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("catchAllTheZips"),
-		)),
-	)
-	otel.SetTracerProvider(tp)
-	return tp
+	return tracerProvider.Shutdown, nil
 }

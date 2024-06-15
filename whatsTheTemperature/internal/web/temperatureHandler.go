@@ -10,18 +10,32 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"time"
 
 	dto "github.com/GoExpertCurso/whatsTheTemperature/internal/web/entity/DTOs"
 	"github.com/GoExpertCurso/whatsTheTemperature/pkg"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
-var tracer = otel.Tracer("github.com/GoExpertCurso/whatsTheTemperature")
+type WebHandler struct {
+	Tracer trace.Tracer
+}
 
-func SearchZipCode(w http.ResponseWriter, r *http.Request) {
-	ctx, span := tracer.Start(r.Context(), "SearchZipCode")
-	defer span.End()
+func NewWebHandler(tracer trace.Tracer) *WebHandler {
+	return &WebHandler{
+		Tracer: tracer,
+	}
+}
+
+func (h *WebHandler) SearchZipCode(w http.ResponseWriter, r *http.Request) {
+	carrier := propagation.HeaderCarrier(r.Header)
+	ctx := r.Context()
+	ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
+	_, span := h.Tracer.Start(ctx, "get-city-name")
 
 	vars := mux.Vars(r)
 	cep, ok := vars["cep"]
@@ -62,12 +76,14 @@ func SearchZipCode(w http.ResponseWriter, r *http.Request) {
 	var cepDto dto.Cep
 	_ = json.Unmarshal(body, &cepDto)
 	defer response.Body.Close()
-	SearchClimate(ctx, w, r, cepDto.Localidade)
+	span.End()
+	h.searchClimate(ctx, w, r, cepDto.Localidade)
 }
 
-func SearchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, location string) {
-	_, span := tracer.Start(ctx, "SearchClimate")
-	defer span.End()
+func (h *WebHandler) searchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, location string) {
+	_, span := h.Tracer.Start(ctx, "get-city-temp")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
 
 	params := url.Values{}
 	params.Add("q", location)
@@ -78,7 +94,17 @@ func SearchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, 
 	baseUrl := "https://api.weatherapi.com/v1/current.json?key=" + os.Getenv("API_KEY")
 	requestUrl := baseUrl + "&" + encodedParams
 
-	response, err := http.Get(requestUrl)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestUrl, nil)
+	if err != nil {
+		log.Printf("Error creating request: %v", err)
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+	client := http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	response, err := client.Do(req)
 	if err != nil {
 		log.Fatalln("Error: ", err)
 	}
@@ -105,5 +131,6 @@ func SearchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		log.Fatalln("\nError enconding json:", err.Error())
 	}
+	span.End()
 	w.Write([]byte(jsonTemp))
 }
