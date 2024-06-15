@@ -47,7 +47,7 @@ func (h *WebHandler) CatchZipHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func callTemperatureAPI(cep string) []byte {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+os.Getenv("HOST_WTT")+":"+os.Getenv("PORT_WTT")+"/"+cep, nil)
