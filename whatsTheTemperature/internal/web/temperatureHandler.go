@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"time"
 
 	dto "github.com/GoExpertCurso/whatsTheTemperature/internal/web/entity/DTOs"
 	"github.com/GoExpertCurso/whatsTheTemperature/pkg"
@@ -40,7 +39,7 @@ func (h *WebHandler) SearchZipCode(w http.ResponseWriter, r *http.Request) {
 	cep := chi.URLParam(r, "cep")
 	log.Printf("cep: %s", cep)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://viacep.com.br/ws/"+cep, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://viacep.com.br/ws/"+cep+"/json", nil)
 	if err != nil {
 		log.Printf("Fail to create the request: %v", err)
 	}
@@ -55,6 +54,11 @@ func (h *WebHandler) SearchZipCode(w http.ResponseWriter, r *http.Request) {
 		log.Panic("Error: ", err)
 	}
 
+	if response.StatusCode == 400 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	cepRegex := regexp.MustCompile(`^\d{5}-?\d{3}$`)
 
 	body, err := io.ReadAll(response.Body)
@@ -65,7 +69,7 @@ func (h *WebHandler) SearchZipCode(w http.ResponseWriter, r *http.Request) {
 	var erroDto dto.ZipCodeError
 	_ = json.Unmarshal([]byte(body), &erroDto)
 	/* if err != nil {
-		fmt.Println("Error decoding response body:", err.Error())
+	fmt.Println("Error decoding response body:", err.Error())
 	} */
 
 	if erroDto.Erro {
@@ -84,14 +88,12 @@ func (h *WebHandler) SearchZipCode(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(body, &cepDto)
 	defer response.Body.Close()
 	span.End()
+	_, span = h.Tracer.Start(ctx, "get-city-temp")
 	h.searchClimate(ctx, w, r, cepDto.Localidade)
+	span.End()
 }
 
 func (h *WebHandler) searchClimate(ctx context.Context, w http.ResponseWriter, r *http.Request, location string) {
-	_, span := h.Tracer.Start(ctx, "get-city-temp")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-	defer cancel()
-	defer span.End()
 
 	params := url.Values{}
 	params.Add("q", location)
@@ -107,7 +109,6 @@ func (h *WebHandler) searchClimate(ctx context.Context, w http.ResponseWriter, r
 		log.Printf("Error creating request: %v", err)
 	}
 
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 	client := http.Client{
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
@@ -118,7 +119,7 @@ func (h *WebHandler) searchClimate(ctx context.Context, w http.ResponseWriter, r
 	}
 
 	if response.StatusCode != 200 {
-		w.Write([]byte("Location not found"))
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 

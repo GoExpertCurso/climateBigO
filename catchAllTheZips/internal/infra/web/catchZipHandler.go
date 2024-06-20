@@ -40,7 +40,12 @@ func (h *WebHandler) CatchZipHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pkg.IdentifyZipCode(cepDTO.Cep) {
-		w.Write([]byte(callTemperatureAPI(cepDTO.Cep)))
+		var resultado = callTemperatureAPI(cepDTO.Cep)
+		if resultado == nil {
+			http.Error(w, "", http.StatusBadRequest)
+			return
+		}
+		w.Write([]byte(resultado))
 	} else {
 		http.Error(w, "invalid zipcode", http.StatusUnprocessableEntity)
 	}
@@ -67,6 +72,14 @@ func callTemperatureAPI(cep string) []byte {
 		log.Printf("Error making request: %v", err)
 	}
 	if res != nil {
+		if res.StatusCode == http.StatusNotFound {
+			return []byte("Can not find zipcode")
+		}
+
+		if res.StatusCode == http.StatusBadRequest {
+			return nil
+		}
+
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
 			log.Printf("Error reading response body: %v", err)
