@@ -3,6 +3,8 @@ module github.com/GoExpertCurso/whatsTheTemperature
 go 1.21.5
 
 require (
+	github.com/go-chi/chi v1.5.5
+	github.com/go-chi/chi/v5 v5.0.12
 	github.com/gorilla/mux v1.8.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/spf13/viper v1.18.2

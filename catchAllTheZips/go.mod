@@ -3,7 +3,8 @@ module github.com/GoExpertCurso/catchAllTheZips
 go 1.22.2
 
 require (
-	github.com/gorilla/mux v1.8.1
+	github.com/go-chi/chi v1.5.5
+	github.com/go-chi/chi/v5 v5.0.12
 	github.com/prometheus/client_golang v1.19.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.52.0
 	go.opentelemetry.io/otel v1.27.0

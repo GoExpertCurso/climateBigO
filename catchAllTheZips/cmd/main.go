@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/GoExpertCurso/catchAllTheZips/internal/infra/web"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -30,9 +31,19 @@ func main() {
 	defer cancel()
 
 	handler := InitConfig()
-	r := mux.NewRouter()
+
+	router := chi.NewRouter()
+	router.Use(middleware.Logger)
+	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
+	router.Use(middleware.Recoverer)
+	router.Use(middleware.Timeout(60 * time.Second))
+	router.Handle("/metrics", promhttp.Handler())
+	router.HandleFunc("/", handler.CatchZipHandler)
+
+	/* r := mux.NewRouter()
 	r.HandleFunc("/", handler.CatchZipHandler)
-	r.Handle("/metrics", promhttp.Handler())
+	r.Handle("/metrics", promhttp.Handler()) */
 	//r.Use(otelmux.Middleware("server"))
 
 	shutdown, err := initProvider("catchAllTheZips", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
@@ -48,7 +59,7 @@ func main() {
 	PORT_HOST := os.Getenv("PORT")
 	srv := &http.Server{
 		Addr:    ":" + PORT_HOST,
-		Handler: r,
+		Handler: router,
 	}
 
 	go func() {
@@ -63,7 +74,7 @@ func main() {
 }
 
 func InitConfig() *web.WebHandler {
-	tracer := otel.Tracer("catchAllTheZips-tracer")
+	tracer := otel.Tracer("service-tracer")
 
 	handler := web.NewWebHandler(tracer)
 	return handler

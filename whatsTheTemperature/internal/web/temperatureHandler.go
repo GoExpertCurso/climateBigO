@@ -14,7 +14,7 @@ import (
 
 	dto "github.com/GoExpertCurso/whatsTheTemperature/internal/web/entity/DTOs"
 	"github.com/GoExpertCurso/whatsTheTemperature/pkg"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -37,13 +37,20 @@ func (h *WebHandler) SearchZipCode(w http.ResponseWriter, r *http.Request) {
 	ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
 	_, span := h.Tracer.Start(ctx, "get-city-name")
 
-	vars := mux.Vars(r)
-	cep, ok := vars["cep"]
-	if !ok {
-		fmt.Println("cep não encontrado")
+	cep := chi.URLParam(r, "cep")
+	log.Printf("cep: %s", cep)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://viacep.com.br/ws/"+cep, nil)
+	if err != nil {
+		log.Printf("Fail to create the request: %v", err)
 	}
 
-	response, err := http.Get("https://viacep.com.br/ws/" + cep + "/json/")
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+	client := http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	response, err := client.Do(req)
 	if err != nil {
 		log.Panic("Error: ", err)
 	}
@@ -84,6 +91,7 @@ func (h *WebHandler) searchClimate(ctx context.Context, w http.ResponseWriter, r
 	_, span := h.Tracer.Start(ctx, "get-city-temp")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
+	defer span.End()
 
 	params := url.Values{}
 	params.Add("q", location)
@@ -131,6 +139,5 @@ func (h *WebHandler) searchClimate(ctx context.Context, w http.ResponseWriter, r
 	if err != nil {
 		log.Fatalln("\nError enconding json:", err.Error())
 	}
-	span.End()
 	w.Write([]byte(jsonTemp))
 }
